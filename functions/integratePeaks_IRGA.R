@@ -3,8 +3,8 @@
 
 integratePeaks_IRGA <- function(path2IRGA_file, 
                                 path2injection_map, 
-                                secs_diff_REAL_minus_IRGA = 0 # before being synced on 20/04/2026, there was an apparent difference of secs_diff_REAL_minus_IRGA = 274309 seconds
-                                ){
+                                secs_diff_REAL_minus_IRGA = 0, # before being synced on 20/04/2026, there was an apparent difference of secs_diff_REAL_minus_IRGA = 274309 seconds
+                                title = "dummytitle"){
   
   message(paste("Integrating peaks from",basename(path2IRGA_file)))
   
@@ -20,11 +20,13 @@ integratePeaks_IRGA <- function(path2IRGA_file,
     filter(label!="") %>%
     select(-date)
   
-  mapinj$label <- paste0(mapinj$label, "_1")
+  # mapinj$label <- paste0(mapinj$label, "_1")
   
   #Get date of analysis 
   dayofanalysis <- read.csv(path2injection_map) %>% 
     select(date) %>% pull() %>% unique()
+  
+  dayofanalysis <- dayofanalysis[1]
   
   mapinj$date <- as.Date(dayofanalysis, "%d/%m/%Y")
   
@@ -70,12 +72,25 @@ integratePeaks_IRGA <- function(path2IRGA_file,
     unixend<- as.numeric(as.POSIXct(paste(mapinj[mapinj$label==inj,]$date,
                                           mapinj[mapinj$label==inj,]$time_stop), tz = "CET"))
 
+    if (unixend < unixstart){
+      message("... wrong start or stop time because stop_time > start_time")
+    }
+    if (unixend - unixstart < 60 & unixend - unixstart>0){
+      message("... time window is shorter than 1 min, check if this is correct")
+    }
+    if (unixend - unixstart > 10*60){
+      message("... time window is longer than 10 min, check if this is correct")
+    }
+    
     # ggplot(raw_data, aes(unixtime, CO2))+geom_path()+
     #   geom_vline(xintercept = c(unixstart, unixend))+
     #   theme_bw()
     
     #Subset data from injection sequence inj 
     inj_data<- raw_data[between(raw_data$unixtime, unixstart, unixend),]  
+    
+    # ggplot(inj_data, aes(unixtime, CO2))+geom_path()+
+    #   theme_bw()
     
     #Make sure whole inj_data has the correct label inj
     inj_data$label<- inj
@@ -212,14 +227,14 @@ integratePeaks_IRGA <- function(path2IRGA_file,
   } 
   #Save areas of injections for rawfile i   
   write.csv(A,
-            file = paste0(folder_results,"/", "integrated_injections_",gas, "_", basename(path2IRGA_file), ".csv"),
+            file = paste0(folder_results,"/", "integrated_injections_",gas, "_", title, ".csv"),
             row.names = F)
   
   #Save plots of integrations: use i for naming convention of pdf
   print(paste0("Plotting ",gas," integrations rawfile: ", basename(path2IRGA_file)))
   #plot every injection sequence and their integrals: 
   setwd(folder_plots)
-  pdf(file = paste0("Integrations_",gas, "_",unique(mapinj$date),".pdf"))  # Open PDF device
+  pdf(file = paste0("Integrations_",gas, "_",title,".pdf"))  # Open PDF device
   
   # Loop through the list of plots and print each plot
   for (plot_name in names(plotspeak)) {

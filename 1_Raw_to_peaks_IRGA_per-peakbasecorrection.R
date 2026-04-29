@@ -1,6 +1,6 @@
-#Raw to integrated peaks and baselines#
+# Raw to integrated peaks#
 
-#Before to run this script, you must run "Map_injections.R" script and manually create the "corrected_XXX_map_injection..." files from the "raw_xxx_map_injection..." within the Map_injections folder. You can copy directly the 'time_start', 'time_stop' and 'label' from the raw_mapinjection OR edit if you have something to change. You also need to specify in 'firstIRGA_TG10_or_TG20' instrument was connected upstream (i.e. first in receiving the injected sample): options are "TG20" (for IRGAN2O first) OR "TG10" (for IRGACH4&CO2 first).This info is used to set the width of integration windows according to the upstream-downstream position of the IRGAs. #For data in "EXAMPLE_PROJECT" folder, TG10 was the first IRGA Upstream. 
+# Before to run this script, you must run "Map_injections.R" script and manually create the "corrected_XXX_map_injection..." files from the "raw_xxx_map_injection..." within the Map_injections folder. You can copy directly the 'time_start', 'time_stop' and 'label' from the raw_mapinjection OR edit if you have something to change. You also need to specify in 'firstIRGA_TG10_or_TG20' instrument was connected upstream (i.e. first in receiving the injected sample): options are "TG20" (for IRGAN2O first) OR "TG10" (for IRGACH4&CO2 first).This info is used to set the width of integration windows according to the upstream-downstream position of the IRGAs. #For data in "EXAMPLE_PROJECT" folder, TG10 was the first IRGA Upstream. 
 
 #IMPORTANT: Make sure the separator of the csv file (comma [,] separated values) is not changed when you modify the files. Excell might swap separator from comma to semicolon depending on your geographic configuration. Use text-editors (notepad, notepad++) to check the actual separator in the csv files and to correct them if needed. 
 
@@ -86,10 +86,10 @@ for (f in files.sources){source(f)}
 
 ###1. Check data to integrate####
 #Get rawfiles
-rawfiles<- list.files(path = folder_raw, pattern = ".TXT")
+rawfiles<- list.files(path = folder_raw)
 
 #Get corrected maps of injections
-mapscorrect <- list.files(path = folder_mapinjections, pattern = "map_injections_")
+mapscorrect <- list.files(path = folder_mapinjections, pattern = ".csv")
 print(mapscorrect)
 
 rawtointegrate <- rawfiles
@@ -97,10 +97,7 @@ print(rawtointegrate)
 
 ###2. Integration loop####
 
-integratePeaks_IRGA(path2IRGA_file = paste0(folder_raw,"/","26042013.TXT"), 
-                    path2injection_map = paste0(folder_mapinjections,"/","map_injections_20260420.csv"))
-
-
-integratePeaks_IRGA(path2IRGA_file = paste0(folder_raw,"/","26042013.TXT"), 
-                    path2injection_map = paste0(folder_mapinjections,"/","map_injections_20260420.csv"))
+integratePeaks_IRGA(path2IRGA_file = paste0(folder_raw,"/","20260428_1.txt"), 
+                    path2injection_map = paste0(folder_mapinjections,"/","Injections_maps_20260428_1.csv"),
+                    title = "260428_1ml")
 
