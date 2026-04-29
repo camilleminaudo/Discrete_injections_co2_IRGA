@@ -74,6 +74,7 @@ integratePeaks_IRGA <- function(path2IRGA_file,
 
     if (unixend < unixstart){
       message("... wrong start or stop time because stop_time > start_time")
+      next
     }
     if (unixend - unixstart < 60 & unixend - unixstart>0){
       message("... time window is shorter than 1 min, check if this is correct")
