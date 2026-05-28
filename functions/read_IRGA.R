@@ -2,8 +2,15 @@
 
 
 
-read_IRGA <- function(datafile){
-  data <- read.delim(datafile, header = F, sep = ",")
+
+read_IRGA <- function(myfolder){
+  setwd(myfolder)
+  data <- NULL
+  for (i in list.files(myfolder)){
+    data <- rbind(data,
+                  read.delim(i, header = F, sep = ","))
+  }
+  
   
   # get rid of all raws where first columns doesn't start with a M
   ind_keep = grep(x=data$V1, pattern = "M")
@@ -22,6 +29,9 @@ read_IRGA <- function(datafile){
                         flowrate = as.numeric(data$flowrate),
                         CO2 = as.numeric(data$CO2), #ppb
                         Press = as.numeric(data$Patm))
+  
+  my_data <- my_data[order(my_data$unixtime),]
+  my_data <- my_data[!duplicated(my_data$unixtime),]
   
   return(my_data)
 }

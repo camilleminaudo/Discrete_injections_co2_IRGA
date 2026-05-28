@@ -1,34 +1,13 @@
 
 
 
-integratePeaks_IRGA <- function(path2IRGA_file, 
-                                path2injection_map, 
+
+integratePeaks_IRGA <- function(raw_data, 
+                                mapinj, 
                                 secs_diff_REAL_minus_IRGA = 0, # before being synced on 20/04/2026, there was an apparent difference of secs_diff_REAL_minus_IRGA = 274309 seconds
                                 title = "dummytitle"){
   
-  message(paste("Integrating peaks from",basename(path2IRGA_file)))
-  
-  #Import data from rawfile
-  raw_data<- read_IRGA(datafile = path2IRGA_file)
-  raw_data$unixtime_original <- raw_data$unixtime
-  
-  raw_data <- raw_data %>% group_by(IRGAtime) %>% summarise(across(everything(), ~last(.))) %>% ungroup()
-  
-  #Import corrected map of injections
-  mapinj<- read.csv(path2injection_map) %>% 
-    filter(!is.na(label)) %>%
-    filter(label!="") %>%
-    select(-date)
-  
-  # mapinj$label <- paste0(mapinj$label, "_1")
-  
-  #Get date of analysis 
-  dayofanalysis <- read.csv(path2injection_map) %>% 
-    select(date) %>% pull() %>% unique()
-  
-  dayofanalysis <- dayofanalysis[1]
-  
-  mapinj$date <- as.Date(dayofanalysis, "%d/%m/%Y")
+  message(paste("Integrating peaks for all injections in mapinj"))
   
   # correcting IRGA time based on secs_diff_REAL_minus_IRGA
   raw_data$unixtime <- raw_data$unixtime_original + secs_diff_REAL_minus_IRGA   
@@ -63,15 +42,16 @@ integratePeaks_IRGA <- function(path2IRGA_file,
   
   #loop over different labels of rawfile i
   for (inj in mapinj$label){
-
+    dayofanalysis <- mapinj$date[which(mapinj$label == inj)]
+    
     #Unixstart, time_start from mapinj in unix time format
     unixstart<- as.numeric(as.POSIXct(paste(mapinj[mapinj$label==inj,]$date,
                                             mapinj[mapinj$label==inj,]$time_start), tz = "CET"))
-
+    
     #Unixend, time_stop from mapinj in unix time format
     unixend<- as.numeric(as.POSIXct(paste(mapinj[mapinj$label==inj,]$date,
                                           mapinj[mapinj$label==inj,]$time_stop), tz = "CET"))
-
+    
     if (unixend < unixstart){
       message("... wrong start or stop time because stop_time > start_time")
       next
@@ -89,6 +69,11 @@ integratePeaks_IRGA <- function(path2IRGA_file,
     
     #Subset data from injection sequence inj 
     inj_data<- raw_data[between(raw_data$unixtime, unixstart, unixend),]  
+    
+    if (dim(inj_data)[1] == 0){
+      warning(paste0("No corresponding IRGA data for ", inj))
+      next
+    }
     
     # ggplot(inj_data, aes(unixtime, CO2))+geom_path()+
     #   theme_bw()
@@ -167,26 +152,34 @@ integratePeaks_IRGA <- function(path2IRGA_file,
       summarise(remark_n=sum(!is.na(!!sym(gas)))) %>% pull(remark_n)
     
     #Summarise each peak_id (peaksum, peakmax, unixtimeofmax, raw_peaksum, peakSNR) add avg_remark, sd_remark
-    integrated<- inj_data %>% 
-      filter(!is.na(peak_id)) %>% #keep only data of peaks
-      group_by(label, peak_id) %>% #For each peak_id do the following
-      mutate(gas_bc=!!sym(gas) - first(!!sym(gas)),#Base-correct timeseries for duration of peak (using the concentration of the first point of integration window, before the peak )
-             peak_base=first(!!sym(gas))) %>% 
-      summarise(peaksum=sum(gas_bc),
-                peak_base=mean(peak_base,na.rm=T),
-                secondspeak=sum(!is.na(gas_bc)),
-                peakmax=max(gas_bc,na.rm = T), 
-                unixtime_ofmax=unixtime[gas_bc==peakmax],
-                raw_peaksum=sum(!!sym(gas)),.groups = "keep") %>%
-      mutate(dayofanalysis=dayofanalysis,
-             peakSNR=peaksum/(sd_nopeak),
-             avg_remark=avg_remark,
-             sd_remark=sd_remark,
-             n_remark=n_remark,
-             avg_nopeak=avg_nopeak,
-             sd_nopeak=sd_nopeak,
-             n_nopeak=n_nopeak) %>% 
+    integrated <- inj_data %>% 
+      filter(!is.na(peak_id)) %>%
+      group_by(label, peak_id) %>%
+      mutate(gas_bc = !!sym(gas) - first(!!sym(gas)),
+             peak_base = first(!!sym(gas))) %>% 
+      summarise(peaksum = sum(gas_bc),
+                peak_base = mean(peak_base, na.rm = T),
+                secondspeak = sum(!is.na(gas_bc)),
+                peakmax = ifelse(all(is.na(gas_bc)), NA_real_, max(gas_bc, na.rm = T)),  # fix W1
+                unixtime_ofmax = ifelse(all(is.na(gas_bc)), NA_real_,                    # fix W2
+                                        first(unixtime[gas_bc == max(gas_bc, na.rm = T)])),
+                raw_peaksum = sum(!!sym(gas)),
+                .groups = "keep") %>%
+      mutate(dayofanalysis = dayofanalysis,
+             peakSNR = peaksum / sd_nopeak,
+             avg_remark = avg_remark,
+             sd_remark = sd_remark,
+             n_remark = n_remark,
+             avg_nopeak = avg_nopeak,
+             sd_nopeak = sd_nopeak,
+             n_nopeak = n_nopeak) %>%
       ungroup()
+    
+    
+    if (nrow(integrated) == 0) {
+      warning(paste0("No peaks detected for ", inj, ", skipping plot."))
+      next
+    }
     
     
     avg_peaksum<- mean(integrated$peaksum)
@@ -232,7 +225,7 @@ integratePeaks_IRGA <- function(path2IRGA_file,
             row.names = F)
   
   #Save plots of integrations: use i for naming convention of pdf
-  print(paste0("Plotting ",gas," integrations rawfile: ", basename(path2IRGA_file)))
+  print(paste0("Plotting ",gas," integrations rawfile: ", title))
   #plot every injection sequence and their integrals: 
   setwd(folder_plots)
   pdf(file = paste0("Integrations_",gas, "_",title,".pdf"))  # Open PDF device

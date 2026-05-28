@@ -25,7 +25,7 @@ rm(list=ls())
 
 #TO PROCESS YOUR OWN DATA, uncomment the following line and edit with the full path to your own your project folder (no closing "/"), eg:  
 
-project_root<- "C:/Users/Camille Minaudo/OneDrive - Universitat de Barcelona/Documentos/PROJECTS/2026_DRYINGLAKE/data/DIC_smallVolumes_tests/IRGA/"
+project_root<- "C:/Users/Camille Minaudo/OneDrive - Universitat de Barcelona/Documentos/PROJECTS/2026_DRYINGLAKE/data/DIC_smallVolumes_tests/IRGA/Timeincubationtest/"
 
 
 
@@ -86,9 +86,18 @@ rm(co2)
 #Compare CV and perform summary discarding when appropriate
 
 #Function to determine the best 3 injections
-select_lowest_cv <- function(measurements) {
-  # Generate all combinations of 3 measurements
-  combos <- combn(measurements, 3, simplify = FALSE)
+select_lowest_cv <- function(measurements, n = 3) {
+  # Remove NAs
+  measurements <- measurements[!is.na(measurements)]
+  
+  # If fewer than n valid measurements, return what we have
+  if (length(measurements) < n) {
+    warning(paste0("Only ", length(measurements), " valid measurements, returning all."))
+    return(measurements)
+  }
+  
+  # Generate all combinations of n measurements
+  combos <- combn(measurements, n, simplify = FALSE)
   
   # Calculate the CV for each combination
   cvs <- sapply(combos, function(x) sd(x) / mean(x) * 100)
@@ -103,7 +112,7 @@ select_lowest_cv <- function(measurements) {
 using3best <- all %>%
   group_by(gas,sample,dayofanalysis) %>%
   mutate(total_injections=sum(!is.na(ppm))) %>% 
-  filter(total_injections>3) %>% 
+  filter(total_injections >= 3) %>%   # >= instead of > to also keep exactly 3
   reframe(
     ppm = select_lowest_cv(ppm)
   ) %>% 

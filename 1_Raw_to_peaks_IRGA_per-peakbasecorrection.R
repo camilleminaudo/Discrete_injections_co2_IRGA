@@ -1,29 +1,5 @@
 # Raw to integrated peaks#
 
-# Before to run this script, you must run "Map_injections.R" script and manually create the "corrected_XXX_map_injection..." files from the "raw_xxx_map_injection..." within the Map_injections folder. You can copy directly the 'time_start', 'time_stop' and 'label' from the raw_mapinjection OR edit if you have something to change. You also need to specify in 'firstIRGA_TG10_or_TG20' instrument was connected upstream (i.e. first in receiving the injected sample): options are "TG20" (for IRGAN2O first) OR "TG10" (for IRGACH4&CO2 first).This info is used to set the width of integration windows according to the upstream-downstream position of the IRGAs. #For data in "EXAMPLE_PROJECT" folder, TG10 was the first IRGA Upstream. 
-
-#IMPORTANT: Make sure the separator of the csv file (comma [,] separated values) is not changed when you modify the files. Excell might swap separator from comma to semicolon depending on your geographic configuration. Use text-editors (notepad, notepad++) to check the actual separator in the csv files and to correct them if needed. 
-
-#Description: This script integrates peaks resulting from discrete open-loop injections. 
-
-#Inputs: 
-#Rawfiles from Li-COR 7820 and Li-COR 7810
-#corrected_map_injection files
-
-#Outputs: 
-#Integrated injection files (peak integration data)
-#Integration plots (plots to check quality, of integrations)
-#Baseline files (statistics for remarks containing 'baseline', optional, not required for further steps)
-
-#Peak-max detection is based on difference between max and percentile-25 of each remark
-#Integration window widths are fixed for every gas depending on the upstream-downstream IRGA configuration specified in corrected_map_injection files (12s for upstream, 23s for downstream instrument). 
-#Baseline correction is performed for every peak individually as value of the first point in the integration window (4s before max of peak).
-
-#If remarks that contain "baseline" are present, summary statistics are calculated and written to a different csv file (only as reference, they are not used for integration purposes). 
-
-#REPEATED RUNS: 
-#the script checks which data has already been integrated and skips it. If you need to re-integrate (after inspection of integration plots and corresponding correction of map_injection files), you must delete the integrated injections csv files from the 'Results_ppm' folder. 
-
 #Clean Global environment
 rm(list=ls())
 
@@ -34,7 +10,7 @@ rm(list=ls())
 
 #TO PROCESS YOUR OWN DATA, uncomment the following line and edit with the full path to your own your project folder (no closing "/"), eg:  
 
-project_root<- "C:/Users/Camille Minaudo/OneDrive - Universitat de Barcelona/Documentos/PROJECTS/2026_DRYINGLAKE/data/DIC_smallVolumes_tests/IRGA"
+project_root<- "C:/Users/Camille Minaudo/OneDrive - Universitat de Barcelona/Documentos/PROJECTS/2026_DRYINGLAKE/data/DIC_smallVolumes_tests/IRGA/Timeincubationtest/"
 
 
 
@@ -88,16 +64,83 @@ for (f in files.sources){source(f)}
 #Get rawfiles
 rawfiles<- list.files(path = folder_raw)
 
-#Get corrected maps of injections
-mapscorrect <- list.files(path = folder_mapinjections, pattern = ".csv")
-print(mapscorrect)
 
-rawtointegrate <- rawfiles
-print(rawtointegrate)
 
-###2. Integration loop####
+#Import all raw data contained in myfolder
+raw_data<- read_IRGA(myfolder = folder_raw)
+raw_data$unixtime_original <- raw_data$unixtime
 
-integratePeaks_IRGA(path2IRGA_file = paste0(folder_raw,"/","20260428_1.txt"), 
-                    path2injection_map = paste0(folder_mapinjections,"/","Injections_maps_20260428_1.csv"),
-                    title = "260428_1ml")
+raw_data <- raw_data %>% group_by(IRGAtime) %>% summarise(across(everything(), ~last(.))) %>% ungroup()
+
+raw_data$timeonly <- format(raw_data$PosiXct.time, format = "%H:%M:%S")
+
+
+binned <- raw_data %>%
+  mutate(
+    date = as.Date(date),
+    time_seconds = as.numeric(hms::as_hms(timeonly)),
+    time_bin = floor(time_seconds / 60) * 60  # bin to 1-minute intervals
+  ) %>%
+  distinct(date, time_bin)          # keep only unique date+bin combos
+
+plt <- ggplot(binned, aes(x = time_bin, y = factor(date))) +
+  geom_tile(aes(width = 60, height = 0.8), fill = "steelblue") +
+  scale_x_continuous(
+    name = "Time of day",
+    breaks = seq(0, 86400, by = 3600),
+    labels = function(s) format(hms::as_hms(s), "%H:%M")
+  ) +
+  labs(title = "Data coverage by time of day", y = "Date") +
+  theme_bw(base_size = 13)
+
+
+### 2. Read Maps of injections
+
+
+#Get list of maps of injections
+maps_available <- list.files(path = folder_mapinjections, pattern = ".csv")
+print(maps_available)
+
+# load them all and look at temporal match with IRGA data
+mapinj <- NULL
+for (f in maps_available){
+  message("Reading ", f)
+  mapinj <- rbind(mapinj,
+                  read_injections_map(path2file = paste0(folder_mapinjections,"/",f)))
+  
+}
+
+mapinj_prep <- mapinj %>%
+  mutate(
+    date = as.Date(date),
+    x_mid = (as.numeric(hms::as_hms(time_start)) + 
+               as.numeric(hms::as_hms(time_stop))) / 2
+  )
+
+# your existing plot +
+plt + geom_point(data = mapinj_prep,
+           aes(x = x_mid, y = factor(date)),
+           color = "red", size = 3)
+
+
+
+# extract peaks
+for (f in maps_available){
+  message("Extracting ", f)
+  mapinj_sel <- mapinj[mapinj$file == f,]
+  
+  mytitle <- gsub(pattern = "Map_injections_", replacement = "", x = f)
+  mytitle <- gsub(pattern = ".csv", replacement = "", x = mytitle)
+  
+  integratePeaks_IRGA(raw_data = raw_data, 
+                      mapinj = mapinj_sel,
+                      title = mytitle)
+  warnings()
+  
+}
+
+
+
+
+
 
